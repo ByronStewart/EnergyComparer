@@ -8,12 +8,6 @@ Covers postcodes in **NSW, QLD, SA, TAS, and the ACT**.
 
 ## Quick Start
 
-### Windows (easiest)
-
-Double-click **`run_scraper_enhanced.bat`**. It will create the virtual environment, install dependencies, and launch the scraper automatically.
-
-### Manual Setup
-
 Requires **Python 3.10+**.
 
 ```bash
