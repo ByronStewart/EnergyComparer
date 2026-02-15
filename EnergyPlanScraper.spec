@@ -8,12 +8,17 @@ datas += collect_data_files('certifi')
 
 # Collect pywin32 DLLs needed for COM automation (win32com)
 binaries = []
-venv_site = os.path.join('venv', 'Lib', 'site-packages')
-pywin32_sys32 = os.path.join(venv_site, 'pywin32_system32')
-if os.path.isdir(pywin32_sys32):
-    for f in os.listdir(pywin32_sys32):
-        if f.endswith('.dll'):
-            binaries.append((os.path.join(pywin32_sys32, f), '.'))
+# Check both venv and global site-packages for pywin32 DLLs
+import site
+search_dirs = [os.path.join('venv', 'Lib', 'site-packages')]
+search_dirs += site.getsitepackages()
+for site_dir in search_dirs:
+    pywin32_sys32 = os.path.join(site_dir, 'pywin32_system32')
+    if os.path.isdir(pywin32_sys32):
+        for f in os.listdir(pywin32_sys32):
+            if f.endswith('.dll'):
+                binaries.append((os.path.join(pywin32_sys32, f), '.'))
+        break
 
 
 a = Analysis(

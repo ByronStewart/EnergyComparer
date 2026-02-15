@@ -1,4 +1,4 @@
-name: Build macOS Binary
+name: Build and Release
 
 on:
   workflow_dispatch:
@@ -7,6 +7,33 @@ on:
       - 'v*'
 
 jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests openpyxl certifi pyinstaller pywin32
+
+      - name: Build Windows binary
+        run: pyinstaller EnergyPlanScraper.spec
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: EnergyPlanScraper-windows
+          path: dist/EnergyPlanScraper.exe
+          if-no-files-found: error
+
   build-macos:
     runs-on: macos-latest
 
@@ -27,14 +54,43 @@ jobs:
       - name: Build macOS binary
         run: pyinstaller EnergyPlanScraper_macos.spec
 
-      - name: Verify binary exists
-        run: |
-          ls -lh dist/EnergyPlanScraper
-          file dist/EnergyPlanScraper
-
       - name: Upload macOS binary
         uses: actions/upload-artifact@v4
         with:
           name: EnergyPlanScraper-macos
           path: dist/EnergyPlanScraper
           if-no-files-found: error
+
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: EnergyPlanScraper-windows
+          path: artifacts/windows
+
+      - name: Download macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: EnergyPlanScraper-macos
+          path: artifacts/macos
+
+      - name: Rename binaries for release
+        run: |
+          mv artifacts/windows/EnergyPlanScraper.exe artifacts/EnergyPlanScraper-windows.exe
+          mv artifacts/macos/EnergyPlanScraper artifacts/EnergyPlanScraper-macos
+          chmod +x artifacts/EnergyPlanScraper-macos
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/EnergyPlanScraper-windows.exe
+            artifacts/EnergyPlanScraper-macos
