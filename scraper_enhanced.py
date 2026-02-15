@@ -1749,7 +1749,14 @@ def main():
     # Open the file automatically
     abs_path = str(Path(filepath).resolve())
     print(f"  Opening {abs_path}...")
-    os.startfile(abs_path)
+    import platform
+    import subprocess
+    if platform.system() == "Windows":
+        os.startfile(abs_path)
+    elif platform.system() == "Darwin":
+        subprocess.Popen(["open", abs_path])
+    else:
+        subprocess.Popen(["xdg-open", abs_path])
 
     # Summary stats
     print(f"\n{'='*60}")

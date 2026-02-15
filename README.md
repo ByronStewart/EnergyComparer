@@ -123,14 +123,23 @@ Some postcodes are served by multiple electricity distributors (e.g. boundary po
 
 ## Building a Standalone Executable
 
-A PyInstaller spec file is included to build a single `.exe` for Windows:
+PyInstaller spec files are included to build a standalone executable.
+
+**Windows:**
 
 ```bash
 pip install pyinstaller pywin32
 pyinstaller EnergyPlanScraper.spec
 ```
 
-The executable will be created in the `dist/` folder.
+**macOS:**
+
+```bash
+pip install pyinstaller
+pyinstaller EnergyPlanScraper_macos.spec
+```
+
+The executable will be created in the `dist/` folder. The macOS build excludes Windows-only dependencies (pywin32/COM automation) and skips the VBA macro injection feature.
 
 ---
 
