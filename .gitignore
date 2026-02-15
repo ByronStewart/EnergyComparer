@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+.venv/
+ENV/
+
+# PyInstaller
+build/
+dist/
+*.manifest
+*.spec.bak
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Environment variables
+.env
+.env.*
+
+# Logs
+*.log
+nul
+
+# Excel output files
+*.xlsx
+*.csv
