@@ -253,6 +253,11 @@ def _collect_solar_fit_rates(contract: dict) -> list[float]:
         misleads users who are not on the legacy scheme.
 
     Only retailer (``type != "G"``) entries are collected.
+
+    The API may provide both a top-level ``rate`` field and a
+    ``singleTariffRates`` array.  We always prefer ``singleTariffRates``
+    when present because it contains the detailed per-tier rates, whereas
+    ``rate`` can be a summary value that loses the tier structure.
     """
     solar_fits = contract.get("solarFit", [])
     if not solar_fits:
@@ -262,12 +267,15 @@ def _collect_solar_fit_rates(contract: dict) -> list[float]:
         # Skip government / legacy bonus scheme entries
         if fit.get("type") == "G":
             continue
-        rate = fit.get("rate")
-        if rate is not None:
-            rates.append(rate)
-        else:
-            for sr in fit.get("singleTariffRates", []):
+        # Prefer singleTariffRates (has tier detail) over the top-level rate
+        single_rates = fit.get("singleTariffRates", [])
+        if single_rates:
+            for sr in single_rates:
                 rates.append(sr.get("unitPrice", 0))
+        else:
+            rate = fit.get("rate")
+            if rate is not None:
+                rates.append(rate)
     return [r for r in rates if r > 0]
 
 
@@ -288,27 +296,59 @@ def extract_solar_fit_details(contract: dict) -> str:
 
     Only retailer FIT entries (``type != "G"``) are included.
     Government/legacy bonus scheme entries are excluded.
+
+    The API may represent a multi-tiered FIT as multiple ``solarFit``
+    entries (e.g. one with ``volume: 8`` at 8.8 c/kWh and a second
+    with ``unitPrice: 0`` for the remainder).  All tiers — including
+    0 c/kWh remainder tiers — must be preserved so that downstream
+    calculator formulas can apply the volume cap correctly.
     """
     solar_fits = contract.get("solarFit", [])
     if not solar_fits:
         return "No solar feed-in tariff"
-    details = []
+
+    # Collect every tier across all retailer FIT entries
+    tiers: list[tuple[float, float]] = []  # (price, volume)
+    has_any_retailer = False
     for fit in solar_fits:
         # Skip government / legacy bonus scheme entries
         if fit.get("type") == "G":
             continue
+        has_any_retailer = True
         single_rates = fit.get("singleTariffRates", [])
         for sr in single_rates:
             price = sr.get("unitPrice", 0)
             volume = sr.get("volume", 0)
-            if price > 0:
-                if volume > 0:
-                    details.append(f"{price}c/kWh (first {volume}kWh/day)")
-                else:
-                    details.append(f"{price}c/kWh")
-    if not details:
+            tiers.append((price, volume))
+
+    if not has_any_retailer:
         return "No solar feed-in tariff"
-    return "; ".join(details)
+
+    # Separate capped tiers (volume > 0) from uncapped remainder tiers
+    capped = [(p, v) for p, v in tiers if v > 0]
+    uncapped = [(p, v) for p, v in tiers if v == 0]
+
+    # If we have capped tiers but no positive-rate uncapped tier, and there
+    # is a 0c uncapped tier, keep it to show the full tier structure.
+    # If there are no capped tiers, show only positive-rate entries.
+    if capped:
+        details = []
+        for price, volume in capped:
+            details.append(f"{price}c/kWh (first {volume}kWh/day)")
+        # Add the remainder tier (even if 0 c/kWh)
+        if uncapped:
+            # Use the first uncapped entry as the "thereafter" rate
+            details.append(f"{uncapped[0][0]}c/kWh")
+        else:
+            # Capped tiers exist but no explicit remainder — imply 0 thereafter
+            details.append("0c/kWh")
+        return "; ".join(details)
+    else:
+        # No capped tiers — flat rate(s), only show positive rates
+        details = [f"{p}c/kWh" for p, v in tiers if p > 0]
+        if not details:
+            return "No solar feed-in tariff"
+        return "; ".join(details)
 
 
 def extract_controlled_load(contract: dict) -> str:
@@ -902,8 +942,11 @@ def _parse_solar_fit_tiers(plan: dict) -> list[tuple[float, float]]:
     Returns a list of ``(rate, volume)`` tuples sorted by volume descending
     (highest-volume tier first).  A volume of ``0`` means "all remaining".
 
-    Example return for "10c/kWh (first 8kWh/day); 3c/kWh":
-        [(10.0, 8.0), (3.0, 0.0)]
+    Example return for "8.8c/kWh (first 8kWh/day); 0c/kWh":
+        [(8.8, 8.0), (0.0, 0.0)]
+
+    This correctly handles plans where the remainder tier is 0 c/kWh
+    (i.e. you only get paid for the first N kWh/day of export).
     """
     details = plan.get("Solar FIT Details", "")
     if not details or details == "No solar feed-in tariff":
@@ -912,7 +955,7 @@ def _parse_solar_fit_tiers(plan: dict) -> list[tuple[float, float]]:
     tiers = []
     # Each tier is separated by "; "
     for part in details.split("; "):
-        # Match patterns like "10c/kWh (first 8kWh/day)" or "3c/kWh"
+        # Match patterns like "8.8c/kWh (first 8kWh/day)" or "0c/kWh"
         m = re.match(r"([\d.]+)c/kWh(?:\s*\(first\s+([\d.]+)kWh/day\))?", part.strip())
         if m:
             rate = float(m.group(1))
